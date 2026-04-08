@@ -72,10 +72,11 @@ def R_from_flux(flux, distance, z, wavelength):
 
 
 flux_791 = flux_from_mag(15.88, ZP_791)
-theta_500_791, R_500_791 = R_from_flux(flux_791, Dq, z_s, wavelength_791)
-theta_500_791 /= mag_fit
-R_500_791 /= mag_fit
-theta_500 = theta_500_791
+theta_500_791, R_500_791 = R_from_flux(flux_791, Dq, z_s,  wavelength_791) #gives theta_lensed, R lensed (not physically meaningful)
+theta_500_791_UL = theta_500_791/np.sqrt(mag_fit) #unlensed angular size, use for normalization 
+#R_500_791 /= mag_fit
+theta_500 = theta_500_791_UL
+
 theta_E_1 = np.array([np.sqrt(4 * G * (2e33) / c**2 * D_ls / (D_s * D_l))])
 theta_E_4 = np.array([np.sqrt(4 * G * (0.4 * 2e33) / c**2 * D_ls / (D_s * D_l))])
 
@@ -208,8 +209,8 @@ def get_uv_elipse(corr_uv, u_vals, v_vals, numpts=1000, limit=0.1):
     # Map unit square [0,1] x [0,1] to unit circle
     r = jnp.sqrt(points[:, 0])
     theta = 2 * jnp.pi * points[:, 1]
-    u_inner = 2 * a * r * jnp.cos(theta)
-    v_inner = 2 * b * r * jnp.sin(theta)
+    u_inner = 1 * a * r * jnp.cos(theta)
+    v_inner = 1 * b * r * jnp.sin(theta)
     
     # Rotate
     rot = jnp.array([[jnp.cos(phi), -jnp.sin(phi)],

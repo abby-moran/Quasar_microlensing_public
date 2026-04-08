@@ -63,7 +63,7 @@ beta_min = 0.9e-11
 rad = theta_500  
 rad_mas=rad*rad_to_arcsec # really should be rad to micro arcsec, slight misnomer
 g_params = (kappa_bulk, gamma1, gamma2)
-sigma_C = error_C(mag=16.5, wavelength=500*1e-7, R = 2e4, sigma_t=3e-12, A=10*(500**2)*np.pi, t_obs= 8 * 3600)
+sigma_C = error_C(mag=15.76, wavelength=570*1e-7, R = 2e4, sigma_t=3e-12, A=10*(500**2)*np.pi, t_obs= 8 * 3600)
 
 
 arr_rands = jnp.array([[(300-239), (500-68)]])
@@ -78,13 +78,13 @@ elps_pts=jnp.asarray((vpts_8k, upts_8k)) #reversed again, as we do in the corr_C
 phi_0=-get_rot_angle(beta_0)
 
 
-#max of 7.2 thetaE should be more than far enough to see the full area we would be able to resolve
+#max of 7.4 thetaE should be more than far enough to see the full area we would be able to resolve
 # define the points we will consider, along what angles etc
 phi = np.linspace(0,np.pi/2, 5) 
-max_y = (np.array(place_star_radial(jnp.asarray(0.1), 7.2, angle=-np.pi/2,#phi,
+max_y = (np.array(place_star_radial(jnp.asarray(0.1), 7.4, angle=-np.pi/2,#phi,
                                    image_size=image_size, phi_0=phi_0, theta_max=theta_max))/image_size-0.5)*theta_step*image_size
 
-max_x = (np.array(place_star_radial(jnp.asarray(0.1), -7.2, angle=0,
+max_x = (np.array(place_star_radial(jnp.asarray(0.1), -7.4, angle=0,
                                    image_size=image_size, phi_0=phi_0, theta_max=theta_max))/image_size-0.5)*theta_step*image_size
 ex = max_x[0] #get the vectors
 ey = max_y[0]
@@ -165,8 +165,8 @@ if __name__ == "__main__":
         mag_here=(total_I_0 / intensity_unlensed)
         chi2_val= chi2(mag_here, 1, mag_error)
     
-        with open("m01_72tE_mag.txt", "a") as f:
+        with open("m01_74tE_mag.txt", "a") as f:
             f.write(f"{pos}\t{F_mag}\n")
-        with open("m01_72tE_chi2_mag.txt", "a") as f:
+        with open("m01_74tE_chi2_mag.txt", "a") as f:
             f.write(f"{pos}\t{chi2_val}\n")
 

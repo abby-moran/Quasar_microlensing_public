@@ -190,7 +190,7 @@ beta_min = 0.9e-11
 rad = theta_500  
 rad_mas=rad*rad_to_arcsec # really should be rad to micro arcsec, slight misnomer
 g_params = (kappa_bulk, gamma1, gamma2)
-sigma_C = error_C(mag=16.5, wavelength=500*1e-7, R = 2e4, sigma_t=3e-12, A=10*(500**2)*np.pi, t_obs= 8 * 3600)
+sigma_C = error_C(mag=15.76, wavelength=570*1e-7, R = 2e4, sigma_t=3e-12, A=10*(500**2)*np.pi, t_obs= 8 * 3600)
 
 
 #get unlensed rotation angle, correlation points
@@ -235,7 +235,7 @@ if __name__ == "__main__":
     rad = theta_500  
     rad_mas=rad*rad_to_arcsec
     g_params = (kappa_bulk, gamma1, gamma2)
-    sigma_C = error_C(mag=16.5, wavelength=500*1e-7, R = 2e4, sigma_t=3e-12, A=10*(500**2)*np.pi, t_obs= 8 * 3600)
+    sigma_C = error_C(mag=15.76, wavelength=570*1e-7, R = 2e4, sigma_t=3e-12, A=10*(500**2)*np.pi, t_obs= 8 * 3600)
 
     M1 = 0.1 #* u.solMass.to(u.g)
     star1 = [M1]
@@ -289,9 +289,9 @@ if __name__ == "__main__":
             cov_matrix_f, uncertainties_f = parameter_uncertainties(fisher_II[0], theta_step, numstars=1, printout=False)
             delta_text='delta=3'
         
-        with open("m01_74tE_II.txt", "a") as f:
+        with open("m01_72tE_II.txt", "a") as f:
             f.write(f"{pos}\t{uncertainties_f[0]:.6e}\t"
                     f"{uncertainties_f[1]:.6e}\t{uncertainties_f[2]:.6e}\t"
                     f"{uncertainties_f[3]:.6e}\t{cov_matrix_f}\n")
-        with open("m01_74tE_chi2_II.txt", "a") as f:
+        with open("m01_72tE_chi2_II.txt", "a") as f:
             f.write(f"{pos}\t{chi2_val}\n")

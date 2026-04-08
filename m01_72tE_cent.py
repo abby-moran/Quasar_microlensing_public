@@ -40,7 +40,7 @@ beta_min = 0.9e-11
 rad = theta_500  
 rad_mas=rad*rad_to_arcsec
 g_params = (kappa_bulk, gamma1, gamma2)
-sigma_C = error_C(mag=16.5, wavelength=500*1e-7, R = 2e4, sigma_t=3e-12, A=10*(500**2)*np.pi, t_obs= 8 * 3600)
+sigma_C = error_C(mag=15.76, wavelength=570*1e-7, R = 2e4, sigma_t=3e-12, A=10*(500**2)*np.pi, t_obs= 8 * 3600)
 
 
 #get unlensed rotation angle, correlation points
@@ -55,10 +55,10 @@ phi_0=-get_rot_angle(beta_0)
 
 # define the points we will consider, along what angles etc
 phi = np.linspace(0,np.pi/2, 5) 
-max_y = (np.array(place_star_radial(jnp.asarray(0.1), 7.2, angle=-np.pi/2,#phi,
+max_y = (np.array(place_star_radial(jnp.asarray(0.1), 7.4, angle=-np.pi/2,#phi,
                                    image_size=image_size, phi_0=phi_0, theta_max=theta_max))/image_size-0.5)*theta_step*image_size
 
-max_x = (np.array(place_star_radial(jnp.asarray(0.1), -7.2, angle=0,
+max_x = (np.array(place_star_radial(jnp.asarray(0.1), -7.4, angle=0,
                                    image_size=image_size, phi_0=phi_0, theta_max=theta_max))/image_size-0.5)*theta_step*image_size
 ex = max_x[0] #get the vectors
 ey = max_y[0]
@@ -108,7 +108,7 @@ if __name__ == "__main__":
         input_test=[arr_theta, theta_max, D_s, D_l, D_ls, g_params]
         J_mag, cent0 = compute_jacobian(params_initial, compute_centroid, delta, input_test, 1)
         
-        with open("m01_72tE_cent.txt", "a") as f:
+        with open("m01_74tE_cent.txt", "a") as f:
             f.write(f"{pos}\t{J_mag}\t{cent0}\n")
         
 
