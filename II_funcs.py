@@ -40,7 +40,6 @@ mag_fit = 6.86
 
 Dq = 4.6e27  
 rad_to_arcsec=2.0626e+11
-mag_fit=6.86
 
 # define these explictly, from the data above 
 kappa_star=0.05 
