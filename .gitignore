@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.ipynb_checkpoints/*
+*.npz
+*.txt
+data_old/*
+*.sh
+m01_delt_test.txt
+position_check_II.txt
