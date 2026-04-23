@@ -8,7 +8,6 @@ data_old/*
 m01_delt_test.txt
 position_check_II.txt
 M04/II_funcs.py
-M04/*.txt
 M04/*.sh
 M04/*.npz
 M04/.ipynb_checkpoints/*
@@ -16,3 +15,5 @@ M04/Figures/*
 M04/old_data/*
 M04/*.out
 *.npy
+!M04/*.txt
+M04/position_check_II.txt
