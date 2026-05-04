@@ -17,3 +17,4 @@ M04/*.out
 *.npy
 !M04/*.txt
 M04/position_check_II.txt
+!data/*.txt
