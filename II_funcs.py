@@ -31,7 +31,6 @@ from scipy.signal import savgol_filter
 G=6.6743 * 10**(-8) #cm3 g-1 s-2
 c=3e10 #cm/s
 h=6.6261e-27 #cm2 g s-1
-hbar=h/(2*np.pi)
 K=1.3807e-16 #cm2 g s-2 K-1
 T_500 = 28776
 ZP_791 = 1.23e-9               # erg cm^2 s^-1 A^-1
@@ -48,7 +47,6 @@ gamma1=0.25426193864
 gamma2=0.4098991987
 z_s=3.62
 # D_q=4.6e+27 # KVT: Why is there a separate Dq and Ds?
-K=1.3807e-16 #cm2 g s-2 K-1
 hbar=1.0546e-27 #cm2 g s-1
 z_l=0.34
 
@@ -56,9 +54,7 @@ D_l=cosmo.angular_diameter_distance(z_l).value*u.Mpc.to(u.cm)
 D_s = cosmo.angular_diameter_distance(z_s).value*u.Mpc.to(u.cm)
 D_ls=cosmo.angular_diameter_distance_z1z2(z_l, z_s).value*u.Mpc.to(u.cm)
 
-print("D_s = {:.3e} cm".format(D_s))
-print("D_l = {:.3e} cm".format(D_l))
-print("D_ls = {:.3e} cm".format(D_ls))## Defining quasar functions ###
+## Defining quasar functions ###
 def flux_from_mag(mag, ZP):    
     flux=ZP*10**(-.4*mag)*1e8 #cm, not angstrom
     return flux
@@ -384,12 +380,22 @@ def parameter_uncertainties(F, theta_step, printout=True, numstars=1):
     """
     Compute parameter uncertainties from the Fisher matrix.
     https://supernova.lbl.gov/~evlinder/InfoMatrixNotes.pdf
-    """
-    # Invert Fisher matrix to get covariance matrix
-    cov_matrix = jnp.linalg.inv(F)
 
-    # Uncertainties are the square roots of the diagonal elements
-    uncertainties = jnp.sqrt(jnp.diag(cov_matrix))
+    Uses Jacobi preconditioning before inversion: scale F to a correlation
+    matrix (unit diagonal), invert, then unscale.  This reduces the condition
+    number by the spread in Fisher diagonal elements and preserves float64
+    precision throughout.
+    """
+    F = np.array(F, dtype=np.float64)
+
+    # Jacobi preconditioning: d_i = sqrt(F[i,i])
+    d = np.sqrt(np.maximum(np.diag(F), 0.0))
+    d[d == 0] = 1.0
+    F_corr = F / np.outer(d, d)          # correlation matrix — diagonal = 1, off-diag in [-1, 1]
+    C_corr = np.linalg.inv(F_corr)       # invert the well-conditioned version
+    cov_matrix = C_corr / np.outer(d, d) # unscale to physical covariance
+
+    uncertainties = np.sqrt(np.abs(np.diag(cov_matrix)))
     if printout:
         print('Source radius uncertainty [rad]: ', uncertainties[0])
         for i in range(numstars):
@@ -434,3 +440,229 @@ def place_star_radial(star_masses, fraction, angle=np.pi/4, image_size=7000, phi
 
     # map [-theta_max, +theta_max] → [0, image_size]  (same shape as before)
     return ((positions_plot / (2 * theta_max)) + 0.5) * image_size
+
+
+def likelihood_static(params, inputs, num_stars, data_obs, sigma, sparse, ellipse_pts, pad_frac,
+                      sampled=False, beta_min=0.9e-11):
+    """
+    Log-likelihood for II observations at fixed (static) lens position.
+
+    params: (r_s, m_l, x, y) — source radius in mas, lens mass in M_sun, lens x/y position in mas
+    inputs: (totalI_obs, box_size, theta, intensity_fun, theta_max, Ds, D_l, DLS, g_params)
+    num_stars: 0 (null/macro-only) or 1
+    data_obs: correlation values sampled at ellipse_pts
+    sigma: per-point uncertainty on correlation
+    sparse: always True in current usage
+    ellipse_pts: (v_indices, u_indices) pixel-index arrays into the correlation image
+    pad_frac: zero-padding fraction applied before FFT
+    beta_min: sparse-image cutoff radius in radians
+    """
+    if sampled:
+        uv_tracks, totalI_obs, box_size, theta, intensity_fun, theta_max, Ds, D_l, DLS, g_params = inputs
+    else:
+        totalI_obs, box_size, theta, intensity_fun, theta_max, Ds, D_l, DLS, g_params = inputs
+
+    source_rad, m_stars, xpos, ypos = params
+    theta_step = 2 * theta_max / len(theta[0])
+
+    if num_stars == 0:
+        m_stars = jnp.array([])
+        xpos = jnp.array([])
+        ypos = jnp.array([])
+
+    source_rad = source_rad / rad_to_arcsec  # mas → radians
+    m_stars = jnp.array(m_stars)
+    xpos = jnp.array(xpos) / rad_to_arcsec   # mas → radians
+    ypos = jnp.array(ypos) / rad_to_arcsec
+
+    arr_rand_idx = jnp.array((xpos, ypos)).T if len(xpos) > 0 else np.empty((0, 2))
+    star_params = (m_stars, Ds, D_l, DLS, theta_max, arr_rand_idx)
+
+    if sparse:
+        _, beta_sparse = beta(g_params, star_params, theta)
+        image, (indicesx, indicesy), vals = sparse_quasar_image(
+            beta_sparse, source_rad, theta_max, beta_min, quasar_int_sparse)
+        theta_step = 2 * theta_max / beta_sparse.shape[-1]
+        _, _, model_values = calcC_sparse(
+            pad_image(image, int(beta_sparse.shape[-1] * pad_frac)),
+            theta_step, box_size=box_size, ellipse=False)
+    else:
+        _, image, _, _ = increase_res(intensity_fun, source_rad, g_params, star_params, theta)
+        theta_step = 2 * theta_max / len(image[0])
+        model_values = calcC(
+            pad_image(image, len(image[0]) * pad_frac), theta_step,
+            box_size=box_size, center_ind=center_ind, ellipse=False)
+
+    model_values = model_values[ellipse_pts[0], ellipse_pts[1]]
+
+    residuals = (model_values - data_obs) ** 2 / sigma ** 2
+    II_term = -0.5 * jnp.sum(jnp.abs(residuals))
+    return jnp.real(II_term), jnp.real(II_term)
+
+
+def fisher_three_pt(params, inputs, num_stars, data_obs, sigma, delta, ll_func, elps_pts,
+                    pad_frac=10, sparse=False, sampled=False):
+    """
+    Fisher information matrix via 4-point mixed-partial stencil.
+
+    params: (r_s, [m_l], [x], [y]) in units: mas, M_sun, mas, mas
+    delta:  [delta_r, delta_m, delta_x, delta_y] — perturbation per parameter type
+    ll_func: callable with signature ll_func(params, inputs, num_stars, data_obs, sigma,
+                                             sparse, elps_pts, pad_frac, sampled)
+
+    NOTE on diagonal elements: when i == j the effective step is 2*delta[i], not delta[i],
+    because both the i and j perturbations are applied to the same parameter.  The formula
+    computes (f(x+2h) - 2f(x) + f(x-2h)) / (4h²), which is correct but uses a coarser step
+    than intended.  For highest accuracy on diagonal elements use a dedicated 3-point stencil.
+
+    NOTE on units: the Fisher matrix mixes mas (rows 0,2,3) and M_sun (row 1).  Invert only
+    after rescaling to a single unit system (see rescale_fisher_to_radians in the notebook).
+    """
+    totalI_obs, box_size, theta, intensity_fun, theta_max, Ds, D_l, DLS, g_params = inputs
+
+    if num_stars == 0:
+        params = [params[0], [], [], []]
+
+    source_rad, m_stars, xpos, ypos = params
+    flat_params = [source_rad] + list(m_stars) + list(xpos) + list(ypos)
+
+    delta = [delta[0]] + delta[1:] * num_stars
+    n_params = len(flat_params)
+
+    fisher_full = np.zeros((n_params, n_params))
+    fisher_II   = np.zeros((n_params, n_params))
+
+    def rebuild_params(flat):
+        return [flat[0],
+                flat[1:num_stars + 1],
+                flat[num_stars + 1:2 * num_stars + 1],
+                flat[2 * num_stars + 1:]]
+
+    def call(p):
+        return ll_func(rebuild_params(p), inputs, num_stars, data_obs, sigma,
+                       sparse, elps_pts, pad_frac, sampled)
+
+    # Evaluate at unperturbed point once — reused for every diagonal element.
+    ll_0, II_0 = call(flat_params)
+
+    for i in range(n_params):
+        for j in range(i, n_params):
+            dtheta_i = delta[i]
+            dtheta_j = delta[j]
+
+            if i == j:
+                # 3-point stencil: (f(x+h) - 2f(x) + f(x-h)) / h²
+                # The old 4-point loop applied both the i and j perturbations to the same
+                # parameter when i==j, giving an effective step of 2h and a denominator of
+                # 4h² — correct in principle but twice as coarse as intended.
+                params_p = copy.deepcopy(flat_params)
+                params_m = copy.deepcopy(flat_params)
+                params_p[i] += dtheta_i
+                params_m[i] -= dtheta_i
+
+                ll_p, II_p = call(params_p)
+                ll_m, II_m = call(params_m)
+
+                fisher_full[i, i] = -(ll_p - 2 * ll_0 + ll_m) / dtheta_i ** 2
+                fisher_II[i, i]   = -(II_p - 2 * II_0 + II_m) / dtheta_i ** 2
+            else:
+                # 4-point cross-partial stencil for off-diagonals
+                params_pp = copy.deepcopy(flat_params)
+                params_pm = copy.deepcopy(flat_params)
+                params_mp = copy.deepcopy(flat_params)
+                params_mm = copy.deepcopy(flat_params)
+
+                params_pp[i] += dtheta_i;  params_pp[j] += dtheta_j
+                params_pm[i] += dtheta_i;  params_pm[j] -= dtheta_j
+                params_mp[i] -= dtheta_i;  params_mp[j] += dtheta_j
+                params_mm[i] -= dtheta_i;  params_mm[j] -= dtheta_j
+
+                ll_pp, II_pp = call(params_pp)
+                ll_pm, II_pm = call(params_pm)
+                ll_mp, II_mp = call(params_mp)
+                ll_mm, II_mm = call(params_mm)
+
+                def cross_deriv(a_pp, a_pm, a_mp, a_mm):
+                    return (a_pp - a_pm - a_mp + a_mm) / (4 * dtheta_i * dtheta_j)
+
+                fisher_full[i, j] = -jnp.sum(cross_deriv(ll_pp, ll_pm, ll_mp, ll_mm))
+                fisher_II[i, j]   = -jnp.sum(cross_deriv(II_pp, II_pm, II_mp, II_mm))
+
+                fisher_full[j, i] = fisher_full[i, j]
+                fisher_II[j, i]   = fisher_II[i, j]
+
+    return fisher_full, fisher_II
+
+
+def model_C(params, inputs, num_stars, ellipse_pts, sparse=True, pad_frac=0,
+            beta_min=0.9e-11):
+    """
+    Return model correlation values at ellipse_pts for given params.
+    Same parameter/input convention as likelihood_static.
+    """
+    totalI_obs, box_size, theta, intensity_fun, theta_max, Ds, D_l, DLS, g_params = inputs
+    source_rad, m_stars, xpos, ypos = params
+
+    if num_stars == 0:
+        m_stars = jnp.array([])
+        xpos    = jnp.array([])
+        ypos    = jnp.array([])
+
+    source_rad = source_rad / rad_to_arcsec
+    m_stars    = jnp.array(m_stars)
+    xpos       = jnp.array(xpos) / rad_to_arcsec
+    ypos       = jnp.array(ypos) / rad_to_arcsec
+
+    arr_rand_idx = jnp.array((xpos, ypos)).T if len(xpos) > 0 else np.empty((0, 2))
+    star_params  = (m_stars, Ds, D_l, DLS, theta_max, arr_rand_idx)
+
+    _, beta_sparse = beta(g_params, star_params, theta)
+    image, _, _ = sparse_quasar_image(
+        beta_sparse, source_rad, theta_max, beta_min, quasar_int_sparse)
+    theta_step = 2 * theta_max / beta_sparse.shape[-1]
+    _, _, corr = calcC_sparse(
+        pad_image(image, int(beta_sparse.shape[-1] * pad_frac)),
+        theta_step, box_size=box_size, ellipse=False)
+    return corr[ellipse_pts[0], ellipse_pts[1]]
+
+
+def fisher_gram(params, inputs, num_stars, sigma, delta, elps_pts,
+                pad_frac=0, beta_min=0.9e-11):
+    """
+    Fisher information matrix F = Jᵀ J / σ² via central differences of model_C.
+
+    Guaranteed positive semi-definite. Requires 2*n_params model evaluations.
+
+    params: (r_s, [m_l], [x], [y]) in units: mas, M_sun, mas, mas
+    sigma:  array of per-point correlation uncertainties (length = n_obs)
+    delta:  [delta_r, delta_m, delta_x, delta_y] — perturbation per parameter type
+    """
+    source_rad, m_stars, xpos, ypos = params
+    flat_params = [source_rad] + list(m_stars) + list(xpos) + list(ypos)
+    delta_flat  = ([delta[0]]
+                   + [delta[1]] * num_stars
+                   + [delta[2]] * num_stars
+                   + [delta[3]] * num_stars)
+    n_params    = len(flat_params)
+
+    def rebuild(flat):
+        return [flat[0],
+                flat[1:num_stars + 1],
+                flat[num_stars + 1:2 * num_stars + 1],
+                flat[2 * num_stars + 1:]]
+
+    def eval_C(flat):
+        # float64: JAX defaults to float32; explicit cast avoids rounding errors in J^T J
+        return np.array(model_C(rebuild(flat), inputs, num_stars, elps_pts,
+                                True, pad_frac, beta_min), dtype=np.float64)
+
+    n_obs = len(eval_C(flat_params))
+    J     = np.zeros((n_obs, n_params), dtype=np.float64)
+
+    for i in range(n_params):
+        p_plus  = list(flat_params); p_plus[i]  += delta_flat[i]
+        p_minus = list(flat_params); p_minus[i] -= delta_flat[i]
+        J[:, i] = (eval_C(p_plus) - eval_C(p_minus)) / (2 * delta_flat[i])
+
+    sigma_arr = np.array(sigma, dtype=np.float64)
+    return J.T @ (J / sigma_arr[:, None] ** 2)
