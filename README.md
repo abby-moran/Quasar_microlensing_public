@@ -4,6 +4,20 @@ Code for reproducing the figures and main results of
 
 > **"Measuring Extragalactic Microlens Masses and Motions in Strongly Lensed Quasar Systems with Intensity Interferometry"**
 
+> **2026-07 review fixes** corrected flux-normalization prefactor (16π/3, was 4π) in
+> `II_funcs.R_from_flux`; centroid-shift Δθ_c now taken from the stored image
+> centroids instead of `J @ ones(4)`; centroid metrics use det^(1/4) and √λ_min;
+> magnification/II Fisher matrices combined in consistent units; reflection sign
+> fixes and shear-frame rotation for interpolated matrices; `interp_grid01` grid
+> scale fixed (image_size 7000→8000).  Lens trajectories intentionally move at the
+> *apparent* proper motion ν̃ = A⁻¹ν (image-fixed-frame convention, now documented
+> in the `get_velocities` docstring and paper §3.2).  
+**Data provenance:** everything in `data/` was
+> generated *before* these fixes, with θ_500 = 2.2614e-13 rad (pre-16π/3 value) and
+> images at λ = 806 nm; the notebooks pin these legacy values so the shipped grids
+> remain self-consistent, while fresh runs of the scripts use the corrected
+> normalization and the paper's λ = 570 nm.
+
 ## Overview
 
 The code computes Fisher information matrices that forecast how well an intensity
@@ -50,6 +64,8 @@ Pre-computed data live in `data/`.  The naming convention is
 
 | Prefix | Mass | Grid extent | Grid size |
 |--------|------|-------------|-----------|
+| `gram_m04_10tE` | 0.4 M☉ | 10 θ_E | 20×20 (used by `M04/interp_grid04.ipynb`) |
+| `gram_m01_10tE` | 0.1 M☉ | 10 θ_E | 20×20 (used by `interp_grid01.ipynb`) |
 | `gram_m04_78tE` | 0.4 M☉ | 7.8 θ_E | 12×12 |
 | `m04_78tE` | 0.4 M☉ | 7.8 θ_E | 12×12 |
 | `m01_72tE` | 0.1 M☉ | 7.2 θ_E | 10×10 |

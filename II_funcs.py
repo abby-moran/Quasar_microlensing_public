@@ -37,11 +37,11 @@ ZP_791 = 1.23e-9               # erg cm^2 s^-1 A^-1
 wavelength_791 = 7969e-8       # cm
 mag_fit = 6.86
 
-Dq = 4.6e27  
-rad_to_arcsec=2.0626e+11
+Dq = 4.6e27  # ~ angular-diameter distance to the source (cm); equals D_s below to 2 digits [REMOVE IN PRODUCTION CODE?]
+rad_to_arcsec=2.0626e+11  # NOTE: converts rad -> MICRO-arcsec (uas), not arcsec; name kept for compatibility [FIX IN PRODUCTION CODE?]
 
-# define these explictly, from the data above 
-kappa_star=0.05 
+# define these explictly, from the data above
+kappa_star=0.04  # stellar convergence at image A (arXiv:2303.11987); was 0.05, corrected to match paper
 kappa_bulk=0.38479219
 gamma1=0.25426193864
 gamma2=0.4098991987
@@ -59,7 +59,17 @@ def flux_from_mag(mag, ZP):
     flux=ZP*10**(-.4*mag)*1e8 #cm, not angstrom
     return flux
 def R_from_flux(flux, distance, z, wavelength):
-    flux_den_const=4*np.pi*1.93216*(h**(-5/3))*c**(-2/3)*K**(8/3)
+    """
+    Solve F_lambda = int B_lambda(T(theta)) dOmega for theta_500 given the observed
+    flux density (per unit wavelength), for T(theta) = T_500 (theta/theta_500)^(-3/4).
+
+    Analytically, F = (16*pi/3) * Gamma(8/3)*zeta(8/3) * h^(-5/3) c^(-2/3) k_B^(8/3)
+                      * T_500^(8/3) * lambda^(-7/3) * theta_500^2,
+    with Gamma(8/3)*zeta(8/3) = 1.93216.
+    BUGFIX: the prefactor was previously 4*pi instead of 16*pi/3 (a factor 4/3 too small),
+    which made theta_500 a factor sqrt(4/3) = 1.155 too large.
+    """
+    flux_den_const=(16*np.pi/3)*1.93216*(h**(-5/3))*c**(-2/3)*K**(8/3)
     T_500=28776
     theta_500=np.sqrt(flux/(flux_den_const*(T_500**(8/3))*wavelength**(-7/3)))
     R_500=theta_500*(distance*(1+z)**(4/3))
@@ -68,17 +78,26 @@ def R_from_flux(flux, distance, z, wavelength):
 
 flux_791 = flux_from_mag(15.88, ZP_791)
 theta_500_791, R_500_791 = R_from_flux(flux_791, Dq, z_s,  wavelength_791) #gives theta_lensed, R lensed (not physically meaningful)
-theta_500_791_UL = theta_500_791/np.sqrt(mag_fit) #unlensed angular size, use for normalization 
+theta_500_791_UL = theta_500_791/np.sqrt(mag_fit) #unlensed angular size, use for normalization
 #R_500_791 /= mag_fit
 theta_500 = theta_500_791_UL
+# --------------------------------------------------------------------------------------
+# PREVIOUS GENERATION OF THETA_500 VALUES BEFORE BUGFIX 
+# theta_500_791 = 5.9231e-13
+# theta_500 = 2.2614e-13
+# --------------------------------------------------------------------------------------
 
 theta_E_1 = np.array([np.sqrt(4 * G * (2e33) / c**2 * D_ls / (D_s * D_l))])
 theta_E_4 = np.array([np.sqrt(4 * G * (0.4 * 2e33) / c**2 * D_ls / (D_s * D_l))])
 
 def get_I(mag, deltav):
     """
-    Go from magnitude to Intensity as defined in equation 2.48 of https://arxiv.org/pdf/2307.06989
-    KVT: What is deltav? What are the units of the output?
+    Go from magnitude to the band-integrated intensity entering equation 2.48 of
+    https://arxiv.org/pdf/2307.06989.
+
+    deltav: width of one spectral channel in Hz (sigma_f = nu/R for resolving power R).
+    Returns flux per unit area in one channel, erg s^-1 cm^-2 (i.e. f_nu * delta_nu).
+    zeropt is the adopted flux-density zero point, 2635 Jy = 2635e-23 erg/s/cm^2/Hz.
     """
     zeropt= 2635e-23 #3.631e-20 #
     flux_den=(zeropt)*10**(-.4*mag) #erg/s/cm2/Hz
@@ -92,7 +111,11 @@ def chi2(data, unlensed, error):
 def error_C(mag, wavelength, R, sigma_t=30e-12, t_obs=1e4, eta1=.5, eta2=.5, A=(200**2)*np.pi, mag_I=True):
     """
     Define error on our intensity interferometer according to equation 2.48 in https://arxiv.org/pdf/2307.06989
-    Everything should be in cgs 
+    Everything should be in cgs.
+
+    A is the *total* collecting area per telescope pair (cm^2); eta1, eta2 are the
+    photodetection efficiencies, entering as sigma_C ~ 1/(eta*A).
+
     """
 
     #R= kbar/sigma_k
@@ -313,9 +336,10 @@ def alpha_tot(g_params, star_params, theta):
     
 def get_rot_angle(coords):
     """
-    Given a 2xN array of positions (e.g. beta positions),
-    compute the orientation angle of the major axis.
-    KVT: What does this function do exactly?
+    Given a 2xN(xN) array of positions (e.g. the ray-traced beta grid), compute the
+    position angle (radians, from the x-axis) of the major principal axis of their
+    covariance.  Applied to the macrolensed beta grid this returns the macro-shear
+    axis orientation; the run scripts use phi_0 = -get_rot_angle(beta_0).
     """
     # Covariance and eigen-decomposition
     coords = coords.reshape(2, -1)
@@ -331,22 +355,37 @@ def get_rot_angle(coords):
     phi = np.arctan2(evecs[1, 0], evecs[0, 0])  # radians
     return phi
 
-def quasar_int_sparse(x_coords, y_coords, radius, theta_max, N, wavelength=8.06e-5, quasar_pos=[0,0]):
+def quasar_int_sparse(x_coords, y_coords, radius, theta_max, N, wavelength=5.7e-5, quasar_pos=[0,0]):
     """
-    Modified quasar intensity function to work with sparse coordinates
+    Quasar surface brightness B_lambda = (2 h c^2 / lambda^5) / (exp(h c / lambda k T) - 1)
+    evaluated on sparse coordinates.
+
+    wavelength: observing wavelength in cm.  Default now 5.7e-5 cm (570 nm), the II
+    observing band assumed in the paper.  NOTE: all grids shipped in data/ were
+    generated with the previous default 8.06e-5 cm (~F791W band); regenerate for
+    full consistency with the paper's 570 nm observations.
+
+    NOTE on the inner temperature profile: T is regularized as
+        T(theta) = T_500 * ((theta + theta_min)/radius)^(-3/4),  theta_min = theta_500_791,
+    i.e. the central temperature divergence is smoothed on the (fixed) angular scale
+    theta_min, which is ~2.6x the fiducial unlensed source radius.  This caps the
+    central temperature at ~0.49 T_500 for the fiducial radius and makes the profile
+    deviate from a pure power law well outside the innermost pixel.  This choice is
+    documented in the paper's numerical appendix; use theta_min = 0.001*theta_500_791
+    for a pure power-law disk with a purely numerical regulator.
     """
     const = 2*h*c**2
     theta_step = 2*theta_max/N #need N as a param because we don't have the full grid here
-    
+
     beta_x, beta_y = jnp.array(quasar_pos)*theta_step
     beta_vals = jnp.sqrt((x_coords-beta_x)**2 + (y_coords-beta_y)**2)
-    
+
     def T(theta):
         theta_min = theta_500_791#*.001
         return T_500*((theta+theta_min)/radius)**(-.75)
-    
+
     B_of_theta = (1/(jnp.exp((h*c)/(wavelength*K*T(beta_vals)))-1))*(const/(wavelength**5))
-    
+
     return B_of_theta
 
 def sparse_quasar_image(beta, radius, theta_max, beta_min, quasar_int_func, **kwargs):
@@ -397,13 +436,16 @@ def parameter_uncertainties(F, theta_step, printout=True, numstars=1):
 
     uncertainties = np.sqrt(np.abs(np.diag(cov_matrix)))
     if printout:
-        print('Source radius uncertainty [rad]: ', uncertainties[0])
+        # NOTE: uncertainties are returned in the native units of the Fisher matrix's
+        # parameters (uas for r_s and positions, M_sun for mass, in the run scripts);
+        # the theta_step factor below only applies if positions were in pixels.
+        print('Source radius uncertainty [native units]: ', uncertainties[0])
         for i in range(numstars):
             print('Lensing star ', i+1, 'mass uncertainty [M_0]: ', uncertainties[1+i])
         for j in range(numstars):
-            print('Lensing star ', j+1, 'x position uncertainty [rad]: ', uncertainties[1+numstars+j]*theta_step)
+            print('Lensing star ', j+1, 'x position uncertainty [native units x theta_step]: ', uncertainties[1+numstars+j]*theta_step)
         for k in range(numstars):
-            print('Lensing star ', k+1, 'y position uncertainty [rad]: ', uncertainties[1+2*numstars+k]*theta_step)
+            print('Lensing star ', k+1, 'y position uncertainty [native units x theta_step]: ', uncertainties[1+2*numstars+k]*theta_step)
 
     return cov_matrix, uncertainties
 
@@ -447,7 +489,7 @@ def likelihood_static(params, inputs, num_stars, data_obs, sigma, sparse, ellips
     """
     Log-likelihood for II observations at fixed (static) lens position.
 
-    params: (r_s, m_l, x, y) — source radius in mas, lens mass in M_sun, lens x/y position in mas
+    params: (r_s, m_l, x, y) — source radius in uas, lens mass in M_sun, lens x/y position in uas
     inputs: (totalI_obs, box_size, theta, intensity_fun, theta_max, Ds, D_l, DLS, g_params)
     num_stars: 0 (null/macro-only) or 1
     data_obs: correlation values sampled at ellipse_pts
@@ -505,7 +547,7 @@ def fisher_three_pt(params, inputs, num_stars, data_obs, sigma, delta, ll_func, 
     """
     Fisher information matrix via 4-point mixed-partial stencil.
 
-    params: (r_s, [m_l], [x], [y]) in units: mas, M_sun, mas, mas
+    params: (r_s, [m_l], [x], [y]) in units: uas, M_sun, uas, uas
     delta:  [delta_r, delta_m, delta_x, delta_y] — perturbation per parameter type
     ll_func: callable with signature ll_func(params, inputs, num_stars, data_obs, sigma,
                                              sparse, elps_pts, pad_frac, sampled)
@@ -633,7 +675,7 @@ def fisher_gram(params, inputs, num_stars, sigma, delta, elps_pts,
 
     Guaranteed positive semi-definite. Requires 2*n_params model evaluations.
 
-    params: (r_s, [m_l], [x], [y]) in units: mas, M_sun, mas, mas
+    params: (r_s, [m_l], [x], [y]) in units: uas, M_sun, uas, uas
     sigma:  array of per-point correlation uncertainties (length = n_obs)
     delta:  [delta_r, delta_m, delta_x, delta_y] — perturbation per parameter type
     """
