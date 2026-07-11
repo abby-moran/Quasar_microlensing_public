@@ -53,6 +53,10 @@ analysis_grid.ipynb    — main analysis notebook: loads data, combines Fisher
 analysis_comparison.ipynb — same analysis with comparison to old Hessian results
 Plots.ipynb            — additional figures
 interp_grid01.ipynb    — interpolation grid notebook (M=0.1 M☉)
+interp_grid02.ipynb    — interpolation grid notebook (M=0.2 M☉)
+interp_grid04.ipynb    — interpolation grid notebook (M=0.4 M☉; also makes the
+                         trajectory figures from avgs_04_8yr_cent.npz)
+interp_grid08.ipynb    — interpolation grid notebook (M=0.8 M☉)
 data/                  — pre-computed output files (see below)
 figures/               — saved PDF figures
 ```
@@ -64,7 +68,7 @@ Pre-computed data live in `data/`.  The naming convention is
 
 | Prefix | Mass | Grid extent | Grid size |
 |--------|------|-------------|-----------|
-| `gram_m04_10tE` | 0.4 M☉ | 10 θ_E | 20×20 (used by `M04/interp_grid04.ipynb`) |
+| `gram_m04_10tE` | 0.4 M☉ | 10 θ_E | 20×20 (used by `interp_grid04.ipynb`) |
 | `gram_m01_10tE` | 0.1 M☉ | 10 θ_E | 20×20 (used by `interp_grid01.ipynb`) |
 | `gram_m04_78tE` | 0.4 M☉ | 7.8 θ_E | 12×12 |
 | `m04_78tE` | 0.4 M☉ | 7.8 θ_E | 12×12 |
