@@ -51,35 +51,107 @@ run_centroid.py        — compute image-centroid Jacobian on the same grid
 analysis_grid.ipynb    — main analysis notebook: loads data, combines Fisher
                          matrices, plots 2D uncertainty maps
 analysis_comparison.ipynb — same analysis with comparison to old Hessian results
-Plots.ipynb            — additional figures
+Plots.ipynb            — legacy/setup figures (lensing cartoon, derivative maps,
+                         comparison, sampling); see caveat below — currently
+                         missing its input .npy files, not runnable as-is
 interp_grid01.ipynb    — interpolation grid notebook (M=0.1 M☉)
 interp_grid02.ipynb    — interpolation grid notebook (M=0.2 M☉)
 interp_grid04.ipynb    — interpolation grid notebook (M=0.4 M☉; also makes the
                          trajectory figures from avgs_04_8yr_cent.npz)
 interp_grid08.ipynb    — interpolation grid notebook (M=0.8 M☉)
-data/                  — pre-computed output files (see below)
-figures/               — saved PDF figures
+avgs_0{1,2,4,8}_8yr_cent.npz — per-mass Monte-Carlo-averaged 8-year lens-trajectory
+                         statistics (see below)
+data/                  — pre-computed Fisher/covariance grids + macro-lens fit (see below)
+figures/               — saved PDF figures, one per `savefig` call in the notebooks
+                         above; this is the *source* copy — figures are copied by
+                         hand into the paper directory for compilation (see the
+                         paper's own `CHANGES_review.md` for the copy history)
 ```
 
 ## Data files
 
+### `data/` — Fisher/covariance grids
+
 Pre-computed data live in `data/`.  The naming convention is
 `{prefix}_{observable}.txt` where the prefix encodes mass and grid extent:
 
-| Prefix | Mass | Grid extent | Grid size |
-|--------|------|-------------|-----------|
-| `gram_m04_10tE` | 0.4 M☉ | 10 θ_E | 20×20 (used by `interp_grid04.ipynb`) |
-| `gram_m01_10tE` | 0.1 M☉ | 10 θ_E | 20×20 (used by `interp_grid01.ipynb`) |
-| `gram_m04_78tE` | 0.4 M☉ | 7.8 θ_E | 12×12 |
-| `m04_78tE` | 0.4 M☉ | 7.8 θ_E | 12×12 |
-| `m01_72tE` | 0.1 M☉ | 7.2 θ_E | 10×10 |
+| Prefix | Mass | Grid extent | Grid size | Consumed by |
+|--------|------|-------------|-----------|-------------|
+| `gram_m01_10tE` | 0.1 M☉ | 10 θ_E | 20×20 | `interp_grid01.ipynb` |
+| `gram_m02_10tE` | 0.2 M☉ | 10 θ_E | 20×20 | `interp_grid02.ipynb` |
+| `gram_m04_10tE` | 0.4 M☉ | 10 θ_E | 20×20 | `interp_grid04.ipynb` |
+| `gram_m08_10tE` | 0.8 M☉ | 10 θ_E | 20×20 | `interp_grid08.ipynb` |
+| `gram_m04_78tE` | 0.4 M☉ | 7.8 θ_E | 12×12 | `analysis_comparison.ipynb` (old-Hessian comparison) |
+| `m04_78tE` | 0.4 M☉ | 7.8 θ_E | 12×12 | `analysis_grid.ipynb` |
+| `m01_72tE` | 0.1 M☉ | 7.2 θ_E | 10×10 | `analysis_grid.ipynb` |
 
 Suffixes: `_II.txt` (II Fisher + covariance), `_mag.txt` (magnification Fisher),
 `_chi2_II.txt`, `_chi2_mag.txt` (chi-squared maps), `_cent.txt` (centroid Jacobian).
 
-The `gram_*` files use the standardised finite-difference step sizes described above.
-The `m04_78tE` / `m01_72tE` files are produced by the current run scripts and can be
-regenerated (see below).
+The `gram_m0{1,2,4,8}_10tE_*` grids are the ones that feed the manuscript figures
+(see mapping table below). The `m04_78tE` / `m01_72tE` / `gram_m04_78tE` files are
+lower-resolution, older-vintage grids used only by `analysis_grid.ipynb` /
+`analysis_comparison.ipynb` for diagnostic Fisher-vs-Hessian comparisons — **none of
+their outputs appear in the paper.** They are produced by the current run scripts
+and can be regenerated (see below).
+
+`data/macro_lens_results.npz` — the macro-lens (B1422+231 image A) inverse-Jacobian
+fit (`inv_jacobian_fit`), used by every `interp_grid0X.ipynb` and `analysis_grid.ipynb`
+to convert rest-frame lens velocities into apparent lensed proper motion
+(`get_velocities`, §3.2 of the paper). It is **not produced by any script in this
+repo** — it comes from an external macro-lens model fit and is treated as a fixed
+input.
+
+`data/pre_regen_backup/` — a manual snapshot of the `gram_m01_10tE_*` and
+`gram_m04_10tE_*` files taken 2026-07 immediately before regenerating `data/` with
+the corrected flux-normalization prefactor (16π/3 fix, see top of this file). Not
+read by any notebook or script; kept only as a rollback reference.
+
+### Root-level `.npz` — trajectory Monte Carlo
+
+`avgs_0{1,2,4,8}_8yr_cent.npz` hold per-mass Monte-Carlo-averaged results for a
+lens transiting the source over an 8-year baseline, binned by impact parameter
+(`impact_params`). Each `interp_grid0X.ipynb` loads its own file to pick a
+representative trajectory index for the corner plots; **only `avgs_04_8yr_cent.npz`
+feeds paper figures** — the 5 trajectory-vs-impact-parameter panels of
+`fig:traj_res` (chi/mass/pos/velocity/centroid-acceleration uncertainty vs. |ξ|).
+Cell 57 of `interp_grid04.ipynb` re-runs the underlying 2000×38 Monte Carlo and
+*appends* to this file — do not run it during a routine figure regeneration or the
+npz will grow and break downstream array shapes (see the paper's review memory for
+the safe regeneration recipe).
+
+## Figure → manuscript mapping
+
+Every PDF in `figures/` corresponds to a `\label{fig:...}` in the paper's `main.tex`.
+Generating notebook and underlying `data/` grid are listed below (mass suffix `0X`
+∈ {01, 02, 04, 08} runs through the same notebook/data pattern).
+
+| `fig:` label in paper | PDF(s) in `figures/` | Notebook | Underlying data |
+|---|---|---|---|
+| `basic_lensing` | `basic_lensing.pdf` | `Plots.ipynb` | — (setup cartoon; see caveat) |
+| `derivs` | `derivs.pdf` | `Plots.ipynb` | `dC_d{mass,r_lensed,x,y}.npy` (**missing**, see caveat) |
+| `sampling` | `sampling.pdf` | `Plots.ipynb` | — |
+| `corner_ex` | `corner04_ell.pdf` | `interp_grid04.ipynb` | `gram_m04_10tE_*`, `macro_lens_results.npz` |
+| `chi2_2` | `chi04.pdf` | `interp_grid04.ipynb` | `gram_m04_10tE_chi2_{II,mag}.txt` |
+| `rad_04` | `rad_04.pdf` | `interp_grid04.ipynb` | `gram_m04_10tE_*` |
+| `lens_grid` | `mass_04.pdf`, `pos_04.pdf`, `thetac1_04.pdf`, `thetac2_04.pdf` | `interp_grid04.ipynb` | `gram_m04_10tE_*` |
+| `thetac_res` | `thetac1res_04.pdf`, `thetac2res_04.pdf` | `interp_grid04.ipynb` | `gram_m04_10tE_*`, `avgs_04_8yr_cent.npz` (macro centroid) |
+| `traj_res` | `chi_traj_04.pdf`, `mass_traj_04.pdf`, `pos_traj_04.pdf`, `vel_traj_04.pdf`, `thetac_acc_04.pdf` | `interp_grid04.ipynb` | `avgs_04_8yr_cent.npz` |
+| `lens_comp` | `lensing_comparison.pdf` | `Plots.ipynb` | — (see caveat) |
+| `other_mass_grid` | `mass_0X.pdf`, `pos_0X.pdf` (X=1,2,4,8) | `interp_grid0X.ipynb` | `gram_m0X_10tE_*` |
+| `other_centroids` | `thetac1_0X.pdf`, `thetac2_0X.pdf` (X=1,2,4,8) | `interp_grid0X.ipynb` | `gram_m0X_10tE_*` |
+| `other_centres` | `thetac1res_0X.pdf`, `thetac2res_0X.pdf` (X=1,2,4,8) | `interp_grid0X.ipynb` | `gram_m0X_10tE_*` |
+| `m1_corners` | `corner01_res.pdf`, `corner01_ell.pdf`, `corner01_unres.pdf` | `interp_grid01.ipynb` | `gram_m01_10tE_*`, `macro_lens_results.npz`, `avgs_01_8yr_cent.npz` |
+| `m8_corners` | `corner_res.pdf`, `corner_unres.pdf` (paper's naming — copied from `corner08_res.pdf` / `corner08_unres.pdf`) | `interp_grid08.ipynb` | `gram_m08_10tE_*`, `macro_lens_results.npz`, `avgs_08_8yr_cent.npz` |
+
+**Caveat on `Plots.ipynb`:** it produces `basic_lensing.pdf`, `derivs.pdf`,
+`lensing_comparison.pdf`, and `sampling.pdf`, but (a) it `savefig`s to `../Figures/`,
+not this repo's `figures/` — a path left over from an older directory layout — and
+(b) the `derivs.pdf` cell loads `dC_dmass.npy`, `dC_dr_lensed.npy`, `dC_dx.npy`,
+`dC_dy.npy`, none of which are shipped in this repo. These four figures are
+illustrative/setup panels, not outputs of the Fisher pipeline above; the checked-in
+PDFs in `figures/` are the last good copies, and the notebook is not currently
+runnable end-to-end without the missing derivative arrays.
 
 ## Running the scripts
 
